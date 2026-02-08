@@ -246,6 +246,42 @@
   }
 }
 
+.history-management-dropdown-item-row {
+  display: flex;
+  align-items: stretch;
+
+  .history-management-dropdown-item {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &:hover .history-management-dropdown-item-delete {
+    background: var(--box-selected-background-color);
+  }
+
+  &.selected .history-management-dropdown-item-delete {
+    background: var(--box-selected-active-background-color);
+    color: var(--box-selected-active-text-color);
+  }
+}
+
+.history-management-dropdown-item-delete {
+  border: 0;
+  border-left: var(--base-border);
+  width: 28px;
+  min-width: 28px;
+  background: var(--background-color);
+  color: var(--text-secondary-color);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text-color);
+  }
+}
+
 .history-management-dropdown-item-check {
   width: 14px;
   flex-shrink: 0;

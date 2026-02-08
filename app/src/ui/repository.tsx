@@ -163,6 +163,8 @@ export class RepositoryView extends React.Component<
 
   private readonly changesSidebarRef = React.createRef<ChangesSidebar>()
   private readonly compareSidebarRef = React.createRef<CompareSidebar>()
+  private readonly historyManagementViewRef =
+    React.createRef<HistoryManagementView>()
 
   private focusHistoryNeeded: boolean = false
   private focusChangesNeeded: boolean = false
@@ -451,6 +453,7 @@ export class RepositoryView extends React.Component<
   private renderHistoryManagementContent() {
     return (
       <HistoryManagementView
+        ref={this.historyManagementViewRef}
         key={this.props.repository.id}
         repository={this.props.repository}
         dispatcher={this.props.dispatcher}
@@ -504,7 +507,8 @@ export class RepositoryView extends React.Component<
   }
 
   private renderContentForHistory(): JSX.Element {
-    const { commitSelection, commitLookup, localCommitSHAs } = this.props.state
+    const { commitSelection, commitLookup, localCommitSHAs, selectedSection } =
+      this.props.state
     const { changesetData, file, diff, shas, shasInDiff, isContiguous } =
       commitSelection
 
@@ -537,6 +541,11 @@ export class RepositoryView extends React.Component<
         externalEditorLabel={this.props.externalEditorLabel}
         onOpenInExternalEditor={this.props.onOpenInExternalEditor}
         onViewCommitOnGitHub={this.props.onViewCommitOnGitHub}
+        onAddPathToHistoryManagementFilter={
+          selectedSection === RepositorySectionTab.HistoryManagement
+            ? this.onAddPathToHistoryManagementFilter
+            : undefined
+        }
         hideWhitespaceInDiff={this.props.hideWhitespaceInHistoryDiff}
         showSideBySideDiff={this.props.showSideBySideDiff}
         onOpenBinaryFile={this.onOpenBinaryFile}
@@ -551,6 +560,10 @@ export class RepositoryView extends React.Component<
 
   private onDiffOptionsOpened = () => {
     this.props.dispatcher.incrementMetric('diffOptionsViewedCount')
+  }
+
+  private onAddPathToHistoryManagementFilter = (path: string) => {
+    this.historyManagementViewRef.current?.applyPathFilterFromExternal(path)
   }
 
   private onTutorialCompletionAnnounced = () => {

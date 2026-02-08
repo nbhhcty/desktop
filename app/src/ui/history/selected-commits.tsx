@@ -61,6 +61,8 @@ interface ISelectedCommitsProps {
    */
   readonly onOpenInExternalEditor: (path: string) => void
   readonly onViewCommitOnGitHub: (SHA: string, filePath?: string) => void
+  /** Called to add a file path to the History Management paths filter. */
+  readonly onAddPathToHistoryManagementFilter?: (path: string) => void
   readonly hideWhitespaceInDiff: boolean
 
   /** Whether we should display side by side diffs. */
@@ -429,6 +431,13 @@ export class SelectedCommits extends React.Component<
       },
       { type: 'separator' },
     ]
+
+    if (this.props.onAddPathToHistoryManagementFilter !== undefined) {
+      items.splice(items.length - 1, 0, {
+        label: 'Add to Paths Filter',
+        action: () => this.props.onAddPathToHistoryManagementFilter?.(file.path),
+      })
+    }
 
     let viewOnGitHubLabel = 'View on GitHub'
     const gitHubRepository = repository.gitHubRepository

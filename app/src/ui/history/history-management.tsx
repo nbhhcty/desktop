@@ -108,6 +108,15 @@ export class HistoryManagementView extends React.Component<
     }
   }
 
+  public applyPathFilterFromExternal(path: string) {
+    const normalizedPath = path.trim()
+    if (normalizedPath.length === 0) {
+      return
+    }
+
+    this.onRecentPathSelected(normalizedPath)
+  }
+
   public render() {
     const visibleCommits = this.getVisibleCommits()
     const selectedBranchLabel = this.getSelectedBranchLabel(
@@ -456,14 +465,7 @@ export class HistoryManagementView extends React.Component<
             <div className="history-management-dropdown-divider" />
             <div className="history-management-dropdown-section-label">Recent</div>
             <div className="history-management-dropdown-list">
-              {this.state.recentPaths.map(path =>
-                this.renderDropdownItem(
-                  path,
-                  path === this.state.selectedPath,
-                  () => this.onRecentPathSelected(path),
-                  path
-                )
-              )}
+              {this.state.recentPaths.map(path => this.renderRecentPathItem(path))}
             </div>
           </>
         ) : null}
@@ -488,6 +490,32 @@ export class HistoryManagementView extends React.Component<
         </span>
         <span className="history-management-dropdown-item-text">{label}</span>
       </button>
+    )
+  }
+
+  private renderRecentPathItem(path: string) {
+    const selected = path === this.state.selectedPath
+    return (
+      <div
+        key={path}
+        className={classNames('history-management-dropdown-item-row', { selected })}
+      >
+        {this.renderDropdownItem(
+          path,
+          selected,
+          () => this.onRecentPathSelected(path),
+          `${path}-select`
+        )}
+        <button
+          className="history-management-dropdown-item-delete"
+          onMouseDown={this.onRecentPathRemoveButtonMouseDown}
+          onClick={this.onRecentPathRemoveButtonClicked}
+          data-path={path}
+          aria-label={`Remove ${path} from recent paths`}
+        >
+          <Octicon symbol={octicons.x} />
+        </button>
+      </div>
     )
   }
 
@@ -819,6 +847,44 @@ export class HistoryManagementView extends React.Component<
         this.loadCommits()
       }
     )
+  }
+
+  private onRecentPathRemoved = (path: string) => {
+    const nextRecentPaths = this.state.recentPaths.filter(p => p !== path)
+    if (nextRecentPaths.length === this.state.recentPaths.length) {
+      return
+    }
+
+    this.setState({ recentPaths: nextRecentPaths }, () =>
+      saveRecentPathsToStorage(this.props.repository, this.state.recentPaths)
+    )
+  }
+
+  private onRecentPathRemoveButtonClicked = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    this.stopRecentPathDeletePropagation(event)
+
+    const path = event.currentTarget.dataset.path
+    if (path === undefined) {
+      return
+    }
+
+    this.onRecentPathRemoved(path)
+  }
+
+  private onRecentPathRemoveButtonMouseDown = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    this.stopRecentPathDeletePropagation(event)
+  }
+
+  private stopRecentPathDeletePropagation(
+    event: React.MouseEvent<HTMLButtonElement>
+  ) {
+    event.preventDefault()
+    event.stopPropagation()
+    event.nativeEvent.stopImmediatePropagation()
   }
 
   private getUpdatedRecentPaths(
