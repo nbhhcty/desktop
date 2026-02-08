@@ -1,0 +1,271 @@
+@import '../../mixins';
+
+#history-management-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+
+  .history-management-toolbar {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    align-self: flex-start;
+    width: max-content;
+    max-width: 100%;
+    gap: var(--spacing-half);
+    padding: var(--spacing-half);
+    border-right: var(--base-border);
+    border-bottom: var(--base-border);
+    background: var(--box-alt-background-color);
+  }
+
+  .history-management-search {
+    width: min(100%, 320px);
+    min-width: 220px;
+    align-self: flex-start;
+  }
+
+  .history-management-filters {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--spacing-half);
+    width: auto;
+    margin-left: 0;
+    max-width: 100%;
+  }
+
+  .history-management-filter-button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-half);
+    min-width: 0;
+    max-width: 220px;
+    justify-content: space-between;
+    padding: 0 var(--spacing-half);
+
+    .history-management-filter-button-label {
+      @include ellipsis;
+      max-width: 140px;
+      text-align: left;
+    }
+  }
+
+  .history-management-icon-button {
+    width: 30px;
+    min-width: 30px;
+    padding: 0;
+    justify-content: center;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .history-management-results {
+    padding: var(--spacing-half) var(--spacing);
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary-color);
+    border-bottom: var(--base-border);
+  }
+
+  .history-management-table {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .history-management-table-body {
+    min-height: 0;
+    overflow-y: auto;
+    background: var(--background-color);
+  }
+
+  .history-management-row {
+    width: 100%;
+    border: 0;
+    border-bottom: var(--base-border);
+    background: var(--background-color);
+    color: var(--text-color);
+    display: block;
+    text-align: left;
+    padding: 0;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--box-selected-background-color);
+    }
+
+    &.selected {
+      background: var(--box-selected-active-background-color);
+      color: var(--box-selected-active-text-color);
+    }
+  }
+
+  .history-management-commit {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    min-height: 50px;
+    padding-right: calc(var(--spacing) + var(--spacing-half));
+    padding-left: var(--spacing);
+  }
+
+  .history-management-info {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    margin-top: -4px;
+    overflow: hidden;
+    min-width: 50px;
+  }
+
+  .history-management-description {
+    display: flex;
+    flex-direction: row;
+    margin-top: 3px;
+  }
+
+  .history-management-byline {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-half);
+    min-width: 0;
+    color: var(--text-secondary-color);
+    font-size: var(--font-size-sm);
+  }
+
+  .history-management-byline .AvatarStack {
+    flex: 0 0 auto;
+  }
+
+  .history-management-byline .commit-attribution-component {
+    @include ellipsis;
+    min-width: 0;
+  }
+
+  .history-management-row.selected .history-management-byline {
+    color: var(--box-selected-active-text-color);
+    opacity: 0.85;
+  }
+
+  .history-management-indicators {
+    display: flex;
+    flex-flow: nowrap row;
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    margin-left: var(--spacing);
+    height: 16px;
+    line-height: 16px;
+    max-width: 50%;
+    min-width: 0;
+  }
+
+  .history-management-summary {
+    @include ellipsis;
+    font-weight: var(--font-weight-semibold);
+  }
+
+  .history-management-summary.empty-summary {
+    color: var(--text-secondary-color);
+  }
+
+  .history-management-tag {
+    max-width: 140px;
+    @include ellipsis;
+    flex: 1 1 auto;
+    border-radius: var(--border-radius);
+    background: var(--list-item-badge-background-color);
+    color: var(--list-item-badge-color);
+    font-size: var(--font-size-sm);
+    padding: 0 var(--spacing-half);
+  }
+
+  .history-management-row.selected .history-management-tag {
+    background: var(--list-item-selected-active-badge-background-color);
+    color: var(--list-item-selected-active-badge-color);
+  }
+
+  .history-management-placeholder {
+    padding: var(--spacing-double);
+    color: var(--text-secondary-color);
+  }
+}
+
+.history-management-filter-popover {
+  .popover-content {
+    padding: 0;
+    width: 300px;
+  }
+}
+
+.history-management-dropdown {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.history-management-dropdown-search {
+  padding: var(--spacing-half);
+  border-bottom: var(--base-border);
+}
+
+.history-management-dropdown-actions {
+  display: flex;
+  gap: var(--spacing-half);
+  padding: var(--spacing-half);
+  border-bottom: var(--base-border);
+}
+
+.history-management-dropdown-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.history-management-dropdown-item {
+  border: 0;
+  background: var(--background-color);
+  text-align: left;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-half);
+  padding: var(--spacing-half) var(--spacing);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--box-selected-background-color);
+  }
+
+  &.selected {
+    background: var(--box-selected-active-background-color);
+    color: var(--box-selected-active-text-color);
+  }
+}
+
+.history-management-dropdown-item-check {
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.history-management-dropdown-item-text {
+  @include ellipsis;
+}
+
+.history-management-dropdown-empty {
+  padding: var(--spacing);
+  color: var(--text-secondary-color);
+}
+
+.history-management-dropdown-divider {
+  border-top: var(--base-border);
+}
+
+.history-management-dropdown-section-label {
+  padding: var(--spacing-half) var(--spacing);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary-color);
+}

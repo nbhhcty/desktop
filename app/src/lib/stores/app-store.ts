@@ -1390,6 +1390,19 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.emitUpdate()
   }
 
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public _cacheCommitsForLookup(
+    repository: Repository,
+    commits: ReadonlyArray<Commit>
+  ): void {
+    if (commits.length === 0) {
+      return
+    }
+
+    const gitStore = this.gitStoreCache.get(repository)
+    gitStore.cacheCommitsForLookup(commits)
+  }
+
   private recordMultiCommitDiff(
     shas: ReadonlyArray<string>,
     shasInDiff: ReadonlyArray<string>,
@@ -1764,6 +1777,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const state = this.repositoryStateCache.get(repository)
     const { commitSelection } = state
     const { shas: currentSHAs, isContiguous } = commitSelection
+
     if (currentSHAs.length === 0 || (currentSHAs.length > 1 && !isContiguous)) {
       return
     }
@@ -2993,7 +3007,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
     })
     this.emitUpdate()
 
-    if (selectedSection === RepositorySectionTab.History) {
+    if (
+      selectedSection === RepositorySectionTab.History ||
+      selectedSection === RepositorySectionTab.HistoryManagement
+    ) {
       await this.refreshHistorySection(repository)
     } else if (selectedSection === RepositorySectionTab.Changes) {
       await this.refreshChangesSection(repository, {
@@ -3629,7 +3646,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const section = state.selectedSection
     let refreshSectionPromise: Promise<void>
 
-    if (section === RepositorySectionTab.History) {
+    if (
+      section === RepositorySectionTab.History ||
+      section === RepositorySectionTab.HistoryManagement
+    ) {
       refreshSectionPromise = this.refreshHistorySection(repository)
     } else if (section === RepositorySectionTab.Changes) {
       refreshSectionPromise = this.refreshChangesSection(repository, {

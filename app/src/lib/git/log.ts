@@ -122,7 +122,8 @@ export async function getCommits(
   revisionRange?: string,
   limit?: number,
   skip?: number,
-  additionalArgs: ReadonlyArray<string> = []
+  additionalArgs: ReadonlyArray<string> = [],
+  pathspecs: ReadonlyArray<string> = []
 ): Promise<ReadonlyArray<Commit>> {
   const { formatArgs, parse } = createLogParser({
     sha: '%H', // SHA
@@ -160,7 +161,8 @@ export async function getCommits(
     '--no-show-signature',
     '--no-color',
     ...additionalArgs,
-    '--'
+    '--',
+    ...pathspecs
   )
   const result = await git(args, repository.path, 'getCommits', {
     successExitCodes: new Set([0, 128]),

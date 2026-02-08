@@ -61,6 +61,36 @@ describe('git/log', () => {
       assert.deepStrictEqual(commits[1].tags, ['tentative', 'less-important'])
       assert.equal(commits[2].tags.length, 0)
     })
+
+    it('filters commits by pathspec', async t => {
+      const path = await setupFixtureRepository(t, 'rename-history-detection')
+      const repository = new Repository(path, -1, null, false)
+
+      const newerCommits = await getCommits(
+        repository,
+        'HEAD',
+        100,
+        0,
+        [],
+        ['NEWER.md']
+      )
+      assert.equal(newerCommits.length, 1)
+      assert.equal(
+        newerCommits[0].sha,
+        '55bdecb660fdedfa4c9c25b21204501638664586'
+      )
+
+      const oldCommits = await getCommits(repository, 'HEAD', 100, 0, [], ['OLD.md'])
+      assert.equal(oldCommits.length, 2)
+      assert.equal(
+        oldCommits[0].sha,
+        'c898ca8a56474af8c2524314053758b61c74f8b1'
+      )
+      assert.equal(
+        oldCommits[1].sha,
+        '44c964e78aaf9410ea5c425574c8d6907f5a2eb0'
+      )
+    })
   })
 
   describe('getChangedFiles', () => {

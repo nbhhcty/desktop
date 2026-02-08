@@ -665,6 +665,11 @@ export class GitStore extends BaseStore {
     return this._localCommitSHAs
   }
 
+  /** Cache commits in lookup so selection/detail views can resolve by SHA. */
+  public cacheCommitsForLookup(commits: ReadonlyArray<Commit>) {
+    this.storeCommits(commits)
+  }
+
   /** Store the given commits. */
   private storeCommits(commits: ReadonlyArray<Commit>) {
     for (const commit of commits) {

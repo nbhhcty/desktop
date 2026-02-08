@@ -7,7 +7,7 @@ import { Changes, ChangesSidebar } from './changes'
 import { NoChanges } from './changes/no-changes'
 import { MultipleSelection } from './changes/multiple-selection'
 import { FilesChangedBadge } from './changes/files-changed-badge'
-import { SelectedCommits, CompareSidebar } from './history'
+import { SelectedCommits, CompareSidebar, HistoryManagementView } from './history'
 import { Resizable } from './resizable'
 import { TabBar } from './tab-bar'
 import {
@@ -143,7 +143,12 @@ interface IRepositoryViewState {
 const enum Tab {
   Changes = 0,
   History = 1,
+  HistoryManagement = 2,
 }
+
+type MainRepositorySection =
+  | RepositorySectionTab.Changes
+  | RepositorySectionTab.History
 
 export class RepositoryView extends React.Component<
   IRepositoryViewProps,
@@ -207,10 +212,24 @@ export class RepositoryView extends React.Component<
   }
 
   private renderTabs(): JSX.Element {
-    const selectedTab =
-      this.props.state.selectedSection === RepositorySectionTab.Changes
-        ? Tab.Changes
-        : Tab.History
+    let selectedTab: Tab
+    if (this.props.state.selectedSection === RepositorySectionTab.Changes) {
+      selectedTab = Tab.Changes
+    } else if (
+      this.props.state.selectedSection === RepositorySectionTab.History
+    ) {
+      selectedTab = Tab.History
+    } else if (
+      this.props.state.selectedSection ===
+      RepositorySectionTab.HistoryManagement
+    ) {
+      selectedTab = Tab.HistoryManagement
+    } else {
+      return assertNever(
+        this.props.state.selectedSection,
+        'Unknown repository section'
+      )
+    }
 
     return (
       <TabBar selectedIndex={selectedTab} onTabClicked={this.onTabClicked}>
@@ -221,6 +240,10 @@ export class RepositoryView extends React.Component<
 
         <div className="with-indicator" id="history-tab">
           <span>History</span>
+        </div>
+
+        <div className="with-indicator" id="history-management-tab">
+          <span>History Management</span>
         </div>
       </TabBar>
     )
@@ -374,16 +397,12 @@ export class RepositoryView extends React.Component<
     )
   }
 
-  private renderSidebarContents(): JSX.Element {
-    const selectedSection = this.props.state.selectedSection
-
+  private renderSidebarContents(selectedSection: MainRepositorySection): JSX.Element {
     if (selectedSection === RepositorySectionTab.Changes) {
       return this.renderChangesSidebar()
-    } else if (selectedSection === RepositorySectionTab.History) {
-      return this.renderCompareSidebar()
-    } else {
-      return assertNever(selectedSection, 'Unknown repository section')
     }
+
+    return this.renderCompareSidebar()
   }
 
   private handleSidebarWidthReset = () => {
@@ -394,7 +413,7 @@ export class RepositoryView extends React.Component<
     this.props.dispatcher.setSidebarWidth(width)
   }
 
-  private renderSidebar(): JSX.Element {
+  private renderSidebar(selectedSection: MainRepositorySection): JSX.Element {
     return (
       <FocusContainer onFocusWithinChanged={this.onSidebarFocusWithinChanged}>
         <Resizable
@@ -407,7 +426,7 @@ export class RepositoryView extends React.Component<
           description="Repository sidebar"
         >
           {this.renderTabs()}
-          {this.renderSidebarContents()}
+          {this.renderSidebarContents(selectedSection)}
         </Resizable>
       </FocusContainer>
     )
@@ -422,6 +441,25 @@ export class RepositoryView extends React.Component<
         showBranchList: false,
       })
     }
+  }
+
+  private getCurrentBranch() {
+    const { tip } = this.props.state.branchesState
+    return tip.kind === TipState.Valid ? tip.branch : null
+  }
+
+  private renderHistoryManagementContent() {
+    return (
+      <HistoryManagementView
+        key={this.props.repository.id}
+        repository={this.props.repository}
+        dispatcher={this.props.dispatcher}
+        accounts={this.props.accounts}
+        branches={this.props.state.branchesState.allBranches}
+        defaultBranchName={this.getCurrentBranch()?.name ?? 'HEAD'}
+        onViewCommitOnGitHub={this.props.onViewCommitOnGitHub}
+      />
+    )
   }
 
   private renderStashedChangesContent(): JSX.Element | null {
@@ -621,22 +659,44 @@ export class RepositoryView extends React.Component<
     this.props.dispatcher.changeImageDiffType(imageDiffType)
   }
 
-  private renderContent(): JSX.Element | null {
-    const selectedSection = this.props.state.selectedSection
+  private renderContent(selectedSection: MainRepositorySection): JSX.Element | null {
     if (selectedSection === RepositorySectionTab.Changes) {
       return this.renderContentForChanges()
-    } else if (selectedSection === RepositorySectionTab.History) {
-      return this.renderContentForHistory()
-    } else {
-      return assertNever(selectedSection, 'Unknown repository section')
     }
+
+    return this.renderContentForHistory()
   }
 
   public render() {
+    const { selectedSection } = this.props.state
+
+    if (selectedSection === RepositorySectionTab.HistoryManagement) {
+      return (
+        <UiView id="repository">
+          <FocusContainer onFocusWithinChanged={this.onSidebarFocusWithinChanged}>
+            <Resizable
+              id="repository-sidebar"
+              width={this.props.sidebarWidth.value}
+              maximumWidth={this.props.sidebarWidth.max}
+              minimumWidth={this.props.sidebarWidth.min}
+              onReset={this.handleSidebarWidthReset}
+              onResize={this.handleSidebarResize}
+              description="Repository sidebar"
+            >
+              {this.renderTabs()}
+              {this.renderHistoryManagementContent()}
+            </Resizable>
+          </FocusContainer>
+          {this.renderContentForHistory()}
+          {this.maybeRenderTutorialPanel()}
+        </UiView>
+      )
+    }
+
     return (
       <UiView id="repository">
-        {this.renderSidebar()}
-        {this.renderContent()}
+        {this.renderSidebar(selectedSection)}
+        {this.renderContent(selectedSection)}
         {this.maybeRenderTutorialPanel()}
       </UiView>
     )
@@ -683,9 +743,7 @@ export class RepositoryView extends React.Component<
       return
     }
 
-    // Toggle tab selection on Ctrl+Tab. Note that we don't care
-    // about the shift key here, we can get away with that as long
-    // as there's only two tabs.
+    // Toggle tab selection on Ctrl+Tab.
     if (event.ctrlKey && event.key === 'Tab') {
       this.changeTab()
       event.preventDefault()
@@ -693,10 +751,14 @@ export class RepositoryView extends React.Component<
   }
 
   private changeTab() {
-    const section =
-      this.props.state.selectedSection === RepositorySectionTab.History
-        ? RepositorySectionTab.Changes
-        : RepositorySectionTab.History
+    const sections = [
+      RepositorySectionTab.Changes,
+      RepositorySectionTab.History,
+      RepositorySectionTab.HistoryManagement,
+    ]
+    const currentIndex = sections.indexOf(this.props.state.selectedSection)
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % sections.length
+    const section = sections[nextIndex]
 
     this.props.dispatcher.changeRepositorySection(
       this.props.repository,
@@ -705,20 +767,25 @@ export class RepositoryView extends React.Component<
   }
 
   private onTabClicked = (tab: Tab) => {
-    const section =
-      tab === Tab.History
-        ? RepositorySectionTab.History
-        : RepositorySectionTab.Changes
+    let section: RepositorySectionTab
+
+    if (tab === Tab.Changes) {
+      section = RepositorySectionTab.Changes
+    } else if (tab === Tab.History) {
+      section = RepositorySectionTab.History
+    } else if (tab === Tab.HistoryManagement) {
+      section = RepositorySectionTab.HistoryManagement
+    } else {
+      return assertNever(tab, 'Unknown tab')
+    }
 
     this.props.dispatcher.changeRepositorySection(
       this.props.repository,
       section
     )
-    if (!!section) {
-      this.props.dispatcher.updateCompareForm(this.props.repository, {
-        showBranchList: false,
-      })
-    }
+    this.props.dispatcher.updateCompareForm(this.props.repository, {
+      showBranchList: false,
+    })
   }
 
   private maybeRenderTutorialPanel(): JSX.Element | null {

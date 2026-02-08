@@ -255,6 +255,14 @@ export class Dispatcher {
     return this.appStore._changeCommitSelection(repository, shas, isContiguous)
   }
 
+  /** Cache commits so detail views can resolve SHAs from commitLookup. */
+  public cacheCommitsForLookup(
+    repository: Repository,
+    commits: ReadonlyArray<Commit>
+  ): void {
+    this.appStore._cacheCommitsForLookup(repository, commits)
+  }
+
   /** Update the shas that should be highlighted */
   public updateShasToHighlight(
     repository: Repository,
