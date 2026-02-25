@@ -5,7 +5,11 @@
       "Bash(yarn install)",
       "Bash(command:*)",
       "Bash(nvm --version)",
-      "Bash(nvm install:*)"
+      "Bash(nvm install:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(yarn build:dev:*)",
+      "Bash(cat:*)"
     ]
   }
 }
