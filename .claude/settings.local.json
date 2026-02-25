@@ -9,7 +9,11 @@
       "Bash(lsof:*)",
       "Bash(xargs kill:*)",
       "Bash(yarn build:dev:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(yarn build:prod:*)",
+      "Bash(cross-env NODE_ENV=production tsx:*)",
+      "Bash(NODE_ENV=production npx tsx:*)",
+      "Bash(ditto:*)"
     ]
   }
 }
