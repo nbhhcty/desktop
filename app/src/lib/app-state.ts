@@ -424,6 +424,7 @@ export enum RepositorySectionTab {
   Changes,
   History,
   HistoryManagement,
+  StashManagement,
 }
 
 /**

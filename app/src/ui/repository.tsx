@@ -7,7 +7,11 @@ import { Changes, ChangesSidebar } from './changes'
 import { NoChanges } from './changes/no-changes'
 import { MultipleSelection } from './changes/multiple-selection'
 import { FilesChangedBadge } from './changes/files-changed-badge'
-import { SelectedCommits, CompareSidebar, HistoryManagementView } from './history'
+import {
+  SelectedCommits,
+  CompareSidebar,
+  HistoryManagementView,
+} from './history'
 import { Resizable } from './resizable'
 import { TabBar } from './tab-bar'
 import {
@@ -36,6 +40,7 @@ import { PullRequestSuggestedNextAction } from '../models/pull-request'
 import { clamp } from '../lib/clamp'
 import { Emoji } from '../lib/emoji'
 import { PopupType } from '../models/popup'
+import { StashManagementSidebar, StashManagementView } from './stash-management'
 
 interface IRepositoryViewProps {
   readonly repository: Repository
@@ -138,12 +143,15 @@ interface IRepositoryViewProps {
 interface IRepositoryViewState {
   readonly changesListScrollTop: number
   readonly compareListScrollTop: number
+  readonly selectedStashName: string | null
+  readonly stashRefreshToken: number
 }
 
 const enum Tab {
   Changes = 0,
   History = 1,
   HistoryManagement = 2,
+  StashManagement = 3,
 }
 
 type MainRepositorySection =
@@ -175,6 +183,8 @@ export class RepositoryView extends React.Component<
     this.state = {
       changesListScrollTop: 0,
       compareListScrollTop: 0,
+      selectedStashName: null,
+      stashRefreshToken: 0,
     }
   }
 
@@ -226,6 +236,10 @@ export class RepositoryView extends React.Component<
       RepositorySectionTab.HistoryManagement
     ) {
       selectedTab = Tab.HistoryManagement
+    } else if (
+      this.props.state.selectedSection === RepositorySectionTab.StashManagement
+    ) {
+      selectedTab = Tab.StashManagement
     } else {
       return assertNever(
         this.props.state.selectedSection,
@@ -246,6 +260,10 @@ export class RepositoryView extends React.Component<
 
         <div className="with-indicator" id="history-management-tab">
           <span>History Management</span>
+        </div>
+
+        <div className="with-indicator" id="stash-management-tab">
+          <span>Stash</span>
         </div>
       </TabBar>
     )
@@ -399,7 +417,9 @@ export class RepositoryView extends React.Component<
     )
   }
 
-  private renderSidebarContents(selectedSection: MainRepositorySection): JSX.Element {
+  private renderSidebarContents(
+    selectedSection: MainRepositorySection
+  ): JSX.Element {
     if (selectedSection === RepositorySectionTab.Changes) {
       return this.renderChangesSidebar()
     }
@@ -461,6 +481,32 @@ export class RepositoryView extends React.Component<
         branches={this.props.state.branchesState.allBranches}
         defaultBranchName={this.getCurrentBranch()?.name ?? 'HEAD'}
         onViewCommitOnGitHub={this.props.onViewCommitOnGitHub}
+      />
+    )
+  }
+
+  private renderStashManagementContent() {
+    return (
+      <StashManagementView
+        key={this.props.repository.id}
+        repository={this.props.repository}
+        dispatcher={this.props.dispatcher}
+        selectedStashName={this.state.selectedStashName}
+        refreshToken={this.state.stashRefreshToken}
+        onRefreshRequested={this.onStashRefreshRequested}
+      />
+    )
+  }
+
+  private renderStashManagementSidebar() {
+    return (
+      <StashManagementSidebar
+        key={this.props.repository.id}
+        repository={this.props.repository}
+        dispatcher={this.props.dispatcher}
+        selectedStashName={this.state.selectedStashName}
+        refreshToken={this.state.stashRefreshToken}
+        onSelectionChanged={this.onStashSelectionChanged}
       />
     )
   }
@@ -672,7 +718,9 @@ export class RepositoryView extends React.Component<
     this.props.dispatcher.changeImageDiffType(imageDiffType)
   }
 
-  private renderContent(selectedSection: MainRepositorySection): JSX.Element | null {
+  private renderContent(
+    selectedSection: MainRepositorySection
+  ): JSX.Element | null {
     if (selectedSection === RepositorySectionTab.Changes) {
       return this.renderContentForChanges()
     }
@@ -686,7 +734,9 @@ export class RepositoryView extends React.Component<
     if (selectedSection === RepositorySectionTab.HistoryManagement) {
       return (
         <UiView id="repository">
-          <FocusContainer onFocusWithinChanged={this.onSidebarFocusWithinChanged}>
+          <FocusContainer
+            onFocusWithinChanged={this.onSidebarFocusWithinChanged}
+          >
             <Resizable
               id="repository-sidebar"
               width={this.props.sidebarWidth.value}
@@ -701,6 +751,31 @@ export class RepositoryView extends React.Component<
             </Resizable>
           </FocusContainer>
           {this.renderContentForHistory()}
+          {this.maybeRenderTutorialPanel()}
+        </UiView>
+      )
+    }
+
+    if (selectedSection === RepositorySectionTab.StashManagement) {
+      return (
+        <UiView id="repository">
+          <FocusContainer
+            onFocusWithinChanged={this.onSidebarFocusWithinChanged}
+          >
+            <Resizable
+              id="repository-sidebar"
+              width={this.props.sidebarWidth.value}
+              maximumWidth={this.props.sidebarWidth.max}
+              minimumWidth={this.props.sidebarWidth.min}
+              onReset={this.handleSidebarWidthReset}
+              onResize={this.handleSidebarResize}
+              description="Repository sidebar"
+            >
+              {this.renderTabs()}
+              {this.renderStashManagementSidebar()}
+            </Resizable>
+          </FocusContainer>
+          {this.renderStashManagementContent()}
           {this.maybeRenderTutorialPanel()}
         </UiView>
       )
@@ -747,6 +822,16 @@ export class RepositoryView extends React.Component<
     }
   }
 
+  private onStashSelectionChanged = (selectedStashName: string | null) => {
+    this.setState({ selectedStashName })
+  }
+
+  private onStashRefreshRequested = () => {
+    this.setState(previousState => ({
+      stashRefreshToken: previousState.stashRefreshToken + 1,
+    }))
+  }
+
   private onGlobalKeyDown = (event: KeyboardEvent) => {
     if (event.defaultPrevented) {
       return
@@ -768,9 +853,11 @@ export class RepositoryView extends React.Component<
       RepositorySectionTab.Changes,
       RepositorySectionTab.History,
       RepositorySectionTab.HistoryManagement,
+      RepositorySectionTab.StashManagement,
     ]
     const currentIndex = sections.indexOf(this.props.state.selectedSection)
-    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % sections.length
+    const nextIndex =
+      currentIndex === -1 ? 0 : (currentIndex + 1) % sections.length
     const section = sections[nextIndex]
 
     this.props.dispatcher.changeRepositorySection(
@@ -788,6 +875,8 @@ export class RepositoryView extends React.Component<
       section = RepositorySectionTab.History
     } else if (tab === Tab.HistoryManagement) {
       section = RepositorySectionTab.HistoryManagement
+    } else if (tab === Tab.StashManagement) {
+      section = RepositorySectionTab.StashManagement
     } else {
       return assertNever(tab, 'Unknown tab')
     }

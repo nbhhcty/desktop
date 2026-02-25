@@ -103,6 +103,10 @@ import {
 import { MergeTreeResult } from '../../models/merge'
 import { UncommittedChangesStrategy } from '../../models/uncommitted-changes-strategy'
 import { IStashEntry } from '../../models/stash-entry'
+import {
+  IStashManagementEntry,
+  IStashPushOptions,
+} from '../../models/stash-management-entry'
 import { WorkflowPreferences } from '../../models/workflow-preferences'
 import { resolveWithin } from '../../lib/path'
 import { CherryPickResult } from '../../lib/git/cherry-pick'
@@ -2695,6 +2699,72 @@ export class Dispatcher {
   /** Pop the given stash in the given repository */
   public popStash(repository: Repository, stashEntry: IStashEntry) {
     return this.appStore._popStashEntry(repository, stashEntry)
+  }
+
+  /** Gets all stash entries for the given repository. */
+  public getStashManagementEntries(
+    repository: Repository
+  ): Promise<ReadonlyArray<IStashManagementEntry>> {
+    return this.appStore._getStashManagementEntries(repository)
+  }
+
+  /** Gets patch output for a stash entry. */
+  public getStashPatch(
+    repository: Repository,
+    stashName: string
+  ): Promise<string> {
+    return this.appStore._getStashPatch(repository, stashName)
+  }
+
+  /** Creates a stash entry with optional flags. */
+  public async pushStashEntry(
+    repository: Repository,
+    options: IStashPushOptions
+  ): Promise<boolean | null> {
+    return this.appStore._pushStashEntry(repository, options)
+  }
+
+  /** Applies a stash entry and optionally restores index state. */
+  public applyStashEntry(
+    repository: Repository,
+    stashName: string,
+    restoreIndex: boolean
+  ): Promise<boolean> {
+    return this.appStore._applyStashEntry(repository, stashName, restoreIndex)
+  }
+
+  /** Pops a stash entry by its name (for example `stash@{0}`). */
+  public popStashEntryByName(
+    repository: Repository,
+    stashName: string
+  ): Promise<boolean> {
+    return this.appStore._popStashEntryByName(repository, stashName)
+  }
+
+  /** Drops a stash entry by its name (for example `stash@{0}`). */
+  public dropStashEntryByName(
+    repository: Repository,
+    stashName: string
+  ): Promise<boolean> {
+    return this.appStore._dropStashEntryByName(repository, stashName)
+  }
+
+  /** Clears all stash entries in the repository. */
+  public clearAllStashEntries(repository: Repository): Promise<boolean> {
+    return this.appStore._clearAllStashEntries(repository)
+  }
+
+  /** Creates a branch from a stash entry. */
+  public createBranchFromStash(
+    repository: Repository,
+    branchName: string,
+    stashName: string
+  ): Promise<boolean> {
+    return this.appStore._createBranchFromStash(
+      repository,
+      branchName,
+      stashName
+    )
   }
 
   /**

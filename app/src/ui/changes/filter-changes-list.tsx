@@ -1,7 +1,7 @@
 import * as React from 'react'
 import * as Path from 'path'
 
-import { Dispatcher } from '../dispatcher'
+import { Dispatcher, defaultErrorHandler } from '../dispatcher'
 import { IMenuItem } from '../../lib/menu-item'
 import { revealInFileManager } from '../../lib/app-shell'
 import { encodePathAsUrl } from '../../lib/path'
@@ -48,6 +48,7 @@ import { ContinueRebase } from './continue-rebase'
 import { Octicon, OcticonSymbolVariant } from '../octicons'
 import * as octicons from '../octicons/octicons.generated'
 import { IStashEntry } from '../../models/stash-entry'
+import { IStashPushOptions } from '../../models/stash-management-entry'
 import classNames from 'classnames'
 import { hasWritePermission } from '../../models/github-repository'
 import { hasConflictedFiles } from '../../lib/status'
@@ -66,6 +67,8 @@ import { TextBox } from '../lib/text-box'
 import { Button } from '../lib/button'
 import { LinkButton } from '../lib/link-button'
 import { plural } from '../lib/plural'
+import { Dialog, DialogContent, DialogFooter, DialogStackContext } from '../dialog'
+import { OkCancelButtonGroup } from '../dialog/ok-cancel-button-group'
 import {
   isCommittingFileHiddenByFilter,
   getNoResultsMessage,
@@ -247,6 +250,11 @@ interface IFilterChangesListState {
   readonly selectedItems: ReadonlyArray<IChangesListItem>
   readonly focusedRow: string | null
   readonly groups: ReadonlyArray<IFilterListGroup<IChangesListItem>>
+  readonly isStashDialogOpen: boolean
+  readonly stashMessage: string
+  readonly stashPathspecs: ReadonlyArray<string> | null
+  readonly stashIncludeUntracked: boolean
+  readonly isCreatingStash: boolean
 }
 
 function getSelectedItemsFromProps(
@@ -359,6 +367,11 @@ export class FilterChangesList extends React.Component<
       selectedItems: getSelectedItemsFromProps(props),
       focusedRow: null,
       groups,
+      isStashDialogOpen: false,
+      stashMessage: '',
+      stashPathspecs: null,
+      stashIncludeUntracked: true,
+      isCreatingStash: false,
     }
   }
 
@@ -474,7 +487,98 @@ export class FilterChangesList extends React.Component<
   }
 
   private onStashChanges = () => {
-    this.props.dispatcher.createStashForCurrentBranch(this.props.repository)
+    this.openStashDialog({
+      includeUntracked: true,
+    })
+  }
+
+  private onStashFileChanges = (
+    pathspec: string,
+    includeUntracked: boolean
+  ) => {
+    const options: IStashPushOptions = includeUntracked
+      ? { pathspec, includeUntracked: true }
+      : { pathspec }
+
+    this.openStashDialog(options)
+  }
+
+  private onStashSelectedChanges = (
+    pathspecs: ReadonlyArray<string>,
+    includeUntracked: boolean
+  ) => {
+    const options: IStashPushOptions = includeUntracked
+      ? { pathspec: pathspecs, includeUntracked: true }
+      : { pathspec: pathspecs }
+
+    this.openStashDialog(options)
+  }
+
+  private openStashDialog = (options: IStashPushOptions) => {
+    const stashPathspecs = this.normalizePathspecs(options.pathspec)
+
+    this.setState({
+      isStashDialogOpen: true,
+      stashMessage: options.message?.trim() ?? '',
+      stashPathspecs: stashPathspecs.length > 0 ? stashPathspecs : null,
+      stashIncludeUntracked: options.includeUntracked === true,
+      isCreatingStash: false,
+    })
+  }
+
+  private onStashMessageChanged = (stashMessage: string) => {
+    this.setState({ stashMessage })
+  }
+
+  private onStashDialogDismissed = () => {
+    if (this.state.isCreatingStash) {
+      return
+    }
+
+    this.setState({
+      isStashDialogOpen: false,
+      stashMessage: '',
+      stashPathspecs: null,
+      stashIncludeUntracked: true,
+    })
+  }
+
+  private onStashDialogSubmit = async () => {
+    if (this.state.isCreatingStash) {
+      return
+    }
+
+    const message = this.state.stashMessage.trim()
+    const pathspecs = this.state.stashPathspecs ?? []
+    const options: IStashPushOptions = {
+      ...(this.state.stashIncludeUntracked ? { includeUntracked: true } : {}),
+      ...(message.length > 0 ? { message } : {}),
+      ...(pathspecs.length > 0 ? { pathspec: pathspecs } : {}),
+    }
+
+    this.setState({ isCreatingStash: true })
+
+    try {
+      const didCreate = await this.props.dispatcher.pushStashEntry(
+        this.props.repository,
+        options
+      )
+
+      if (didCreate !== null) {
+        this.setState({
+          isStashDialogOpen: false,
+          stashMessage: '',
+          stashPathspecs: null,
+          stashIncludeUntracked: true,
+          isCreatingStash: false,
+        })
+      } else {
+        this.setState({ isCreatingStash: false })
+      }
+    } catch (error) {
+      this.setState({ isCreatingStash: false })
+      await defaultErrorHandler(this.coerceToError(error), this.props.dispatcher)
+    }
   }
 
   private onDiscardChanges = (files: ReadonlyArray<string>) => {
@@ -533,15 +637,19 @@ export class FilterChangesList extends React.Component<
     }
 
     const hasLocalChanges = this.props.workingDirectory.files.length > 0
-    const hasStash = this.props.stashEntry !== null
     const hasConflicts =
       this.props.conflictState !== null ||
       hasConflictedFiles(this.props.workingDirectory)
+    const selectedFiles = this.props.workingDirectory.files.filter(
+      file => file.selection.getSelectionType() !== DiffSelectionType.None
+    )
+    const selectedPaths = selectedFiles.map(file => file.path)
+    const hasSelectedChanges = selectedFiles.length > 0
+    const selectedIncludeUntracked = selectedFiles.some(
+      selectedFile => selectedFile.status.kind === AppFileStatusKind.Untracked
+    )
 
     const stashAllChangesLabel = __DARWIN__
-      ? 'Stash All Changes'
-      : 'Stash all changes'
-    const confirmStashAllChangesLabel = __DARWIN__
       ? 'Stash All Changes…'
       : 'Stash all changes…'
 
@@ -551,12 +659,24 @@ export class FilterChangesList extends React.Component<
         action: this.onDiscardAllChanges,
         enabled: hasLocalChanges,
       },
-      {
-        label: hasStash ? confirmStashAllChangesLabel : stashAllChangesLabel,
-        action: this.onStashChanges,
-        enabled: hasLocalChanges && this.props.branch !== null && !hasConflicts,
-      },
     ]
+
+    if (hasSelectedChanges) {
+      items.push({
+        label: __DARWIN__
+          ? 'Stash Selected Changes…'
+          : 'Stash selected changes…',
+        action: () =>
+          this.onStashSelectedChanges(selectedPaths, selectedIncludeUntracked),
+        enabled: this.props.branch !== null && !hasConflicts,
+      })
+    }
+
+    items.push({
+      label: stashAllChangesLabel,
+      action: this.onStashChanges,
+      enabled: hasLocalChanges && this.props.branch !== null && !hasConflicts,
+    })
 
     showContextualMenu(items)
   }
@@ -683,10 +803,43 @@ export class FilterChangesList extends React.Component<
       addItemToArray(id)
     }
 
-    const items: IMenuItem[] = [
-      this.getDiscardChangesMenuItem(paths),
-      { type: 'separator' },
-    ]
+    const hasConflicts =
+      this.props.conflictState !== null ||
+      hasConflictedFiles(this.props.workingDirectory)
+    const canStash = this.props.branch !== null && !hasConflicts
+
+    const items: IMenuItem[] = [this.getDiscardChangesMenuItem(paths)]
+
+    if (paths.length === 1) {
+      const selectedFile = selectedFiles[0]
+      if (selectedFile !== undefined) {
+        const includeUntracked =
+          selectedFile.status.kind === AppFileStatusKind.Untracked
+
+        items.push({
+          label: __DARWIN__ ? 'Stash Changes…' : 'Stash changes…',
+          action: () =>
+            this.onStashFileChanges(selectedFile.path, includeUntracked),
+          enabled: canStash,
+        })
+      }
+    } else if (paths.length > 1) {
+      const includeUntracked = selectedFiles.some(
+        selectedFile =>
+          selectedFile.status.kind === AppFileStatusKind.Untracked
+      )
+
+      items.push({
+        label: __DARWIN__
+          ? 'Stash Selected Changes…'
+          : 'Stash selected changes…',
+        action: () => this.onStashSelectedChanges(paths, includeUntracked),
+        enabled: canStash,
+      })
+    }
+
+    items.push({ type: 'separator' })
+
     if (paths.length === 1) {
       const enabled = Path.basename(path) !== GitIgnoreFileName
       items.push({
@@ -1219,11 +1372,7 @@ export class FilterChangesList extends React.Component<
 
   private renderFilterRow = () => {
     return (
-      <div
-        className="header filter-field-row"
-        onContextMenu={this.onContextMenu}
-        ref={this.headerRef}
-      >
+      <div className="header filter-field-row" ref={this.headerRef}>
         {this.renderFilterBox()}
         {this.renderCheckBoxRow()}
       </div>
@@ -1251,7 +1400,7 @@ export class FilterChangesList extends React.Component<
     ${files.length} changed file${plural(files.length)}`
 
     return (
-      <div className="checkbox-container">
+      <div className="checkbox-container" onContextMenu={this.onContextMenu}>
         <Checkbox
           ref={this.includeAllCheckBoxRef}
           value={includeAllValue}
@@ -1372,7 +1521,70 @@ export class FilterChangesList extends React.Component<
         {this.renderStashedChanges()}
         {this.renderHiddenChangesWarning()}
         {this.renderCommitMessageForm()}
+        {this.renderStashDialog()}
       </>
+    )
+  }
+
+  private renderStashDialog() {
+    if (!this.state.isStashDialogOpen) {
+      return null
+    }
+
+    const title =
+      this.state.stashPathspecs === null
+        ? __DARWIN__
+          ? 'Stash All Changes'
+          : 'Stash all changes'
+        : __DARWIN__
+        ? 'Stash Changes'
+        : 'Stash changes'
+
+    return (
+      <DialogStackContext.Provider value={{ isTopMost: true }}>
+        <Dialog
+          id="stash-all-changes-dialog"
+          title={title}
+          onSubmit={this.onStashDialogSubmit}
+          onDismissed={this.onStashDialogDismissed}
+          dismissDisabled={this.state.isCreatingStash}
+          loading={this.state.isCreatingStash}
+          disabled={this.state.isCreatingStash}
+        >
+          <DialogContent>
+            {this.state.stashPathspecs === null ? (
+              <p>
+                Create a stash for current changes. Untracked files will be
+                included.
+              </p>
+            ) : this.state.stashPathspecs.length === 1 ? (
+              <p>
+                Create a stash for <code>{this.state.stashPathspecs[0]}</code>.
+              </p>
+            ) : (
+              <p>
+                Create a stash for {this.state.stashPathspecs.length} selected
+                files.
+              </p>
+            )}
+            <div>
+              <TextBox
+                ariaLabel="Stash message"
+                placeholder="message (optional)"
+                value={this.state.stashMessage}
+                onValueChanged={this.onStashMessageChanged}
+              />
+            </div>
+          </DialogContent>
+          <DialogFooter>
+            <OkCancelButtonGroup
+              okButtonText={__DARWIN__ ? 'Stash Changes' : 'Stash changes'}
+              okButtonDisabled={this.state.isCreatingStash}
+              cancelButtonDisabled={this.state.isCreatingStash}
+            />
+          </DialogFooter>
+        </Dialog>
+      </DialogStackContext.Provider>
     )
   }
 
@@ -1523,5 +1735,26 @@ export class FilterChangesList extends React.Component<
     if (this.state.focusedRow === changeListItem.id) {
       this.setState({ focusedRow: null })
     }
+  }
+
+  private coerceToError(error: unknown): Error {
+    return error instanceof Error ? error : new Error(String(error))
+  }
+
+  private normalizePathspecs(
+    pathspec: IStashPushOptions['pathspec']
+  ): ReadonlyArray<string> {
+    if (pathspec === undefined) {
+      return []
+    }
+
+    if (typeof pathspec === 'string') {
+      const trimmedPathspec = pathspec.trim()
+      return trimmedPathspec.length > 0 ? [trimmedPathspec] : []
+    }
+
+    return pathspec
+      .map(value => value.trim())
+      .filter(value => value.length > 0)
   }
 }

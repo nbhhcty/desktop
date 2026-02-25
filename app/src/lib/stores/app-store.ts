@@ -262,10 +262,24 @@ import {
   moveStashEntry,
 } from '../git/stash'
 import {
+  getAllStashEntries,
+  getStashPatch,
+  pushStashEntry,
+  applyStashEntry,
+  popStashEntryByName,
+  dropStashEntryByName,
+  clearAllStashEntries,
+  createBranchFromStash,
+} from '../git/stash-management'
+import {
   UncommittedChangesStrategy,
   defaultUncommittedChangesStrategy,
 } from '../../models/uncommitted-changes-strategy'
 import { IStashEntry, StashedChangesLoadStates } from '../../models/stash-entry'
+import {
+  IStashManagementEntry,
+  IStashPushOptions,
+} from '../../models/stash-management-entry'
 import { arrayEquals } from '../equality'
 import { MenuLabelsEvent } from '../../models/menu-labels'
 import { findRemoteBranchName } from './helpers/find-branch-name'
@@ -3012,7 +3026,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
       selectedSection === RepositorySectionTab.HistoryManagement
     ) {
       await this.refreshHistorySection(repository)
-    } else if (selectedSection === RepositorySectionTab.Changes) {
+    } else if (
+      selectedSection === RepositorySectionTab.Changes ||
+      selectedSection === RepositorySectionTab.StashManagement
+    ) {
       await this.refreshChangesSection(repository, {
         includingStatus: true,
         clearPartialState: false,
@@ -3651,7 +3668,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
       section === RepositorySectionTab.HistoryManagement
     ) {
       refreshSectionPromise = this.refreshHistorySection(repository)
-    } else if (section === RepositorySectionTab.Changes) {
+    } else if (
+      section === RepositorySectionTab.Changes ||
+      section === RepositorySectionTab.StashManagement
+    ) {
       refreshSectionPromise = this.refreshChangesSection(repository, {
         includingStatus: false,
         clearPartialState: false,
@@ -7264,6 +7284,145 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const untrackedFiles = getUntrackedFiles(workingDirectory)
 
     return createDesktopStashEntry(repository, branch, untrackedFiles)
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _getStashManagementEntries(
+    repository: Repository
+  ): Promise<ReadonlyArray<IStashManagementEntry>> {
+    const gitStore = this.gitStoreCache.get(repository)
+    const entries = await gitStore.performFailableOperation(() =>
+      getAllStashEntries(repository)
+    )
+
+    return entries ?? []
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _getStashPatch(
+    repository: Repository,
+    stashName: string
+  ): Promise<string> {
+    const gitStore = this.gitStoreCache.get(repository)
+    const patch = await gitStore.performFailableOperation(() =>
+      getStashPatch(repository, stashName)
+    )
+
+    return patch ?? ''
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _pushStashEntry(
+    repository: Repository,
+    options: IStashPushOptions
+  ): Promise<boolean | null> {
+    const gitStore = this.gitStoreCache.get(repository)
+    const didCreate = await gitStore.performFailableOperation(() =>
+      pushStashEntry(repository, options)
+    )
+
+    if (didCreate === undefined) {
+      return null
+    }
+
+    await this._refreshRepository(repository)
+    return didCreate
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _applyStashEntry(
+    repository: Repository,
+    stashName: string,
+    restoreIndex: boolean
+  ): Promise<boolean> {
+    const gitStore = this.gitStoreCache.get(repository)
+    const didApply = await gitStore.performFailableOperation(async () => {
+      await applyStashEntry(repository, stashName, restoreIndex)
+      return true
+    })
+
+    if (didApply === true) {
+      await this._refreshRepository(repository)
+      return true
+    }
+
+    return false
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _popStashEntryByName(
+    repository: Repository,
+    stashName: string
+  ): Promise<boolean> {
+    const gitStore = this.gitStoreCache.get(repository)
+    const didPop = await gitStore.performFailableOperation(async () => {
+      await popStashEntryByName(repository, stashName)
+      return true
+    })
+
+    if (didPop === true) {
+      this.statsStore.increment('stashRestoreCount')
+      await this._refreshRepository(repository)
+      return true
+    }
+
+    return false
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _dropStashEntryByName(
+    repository: Repository,
+    stashName: string
+  ): Promise<boolean> {
+    const gitStore = this.gitStoreCache.get(repository)
+    const didDrop = await gitStore.performFailableOperation(async () => {
+      await dropStashEntryByName(repository, stashName)
+      return true
+    })
+
+    if (didDrop === true) {
+      this.statsStore.increment('stashDiscardCount')
+      await this._refreshRepository(repository)
+      return true
+    }
+
+    return false
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _clearAllStashEntries(repository: Repository): Promise<boolean> {
+    const gitStore = this.gitStoreCache.get(repository)
+    const didClear = await gitStore.performFailableOperation(async () => {
+      await clearAllStashEntries(repository)
+      return true
+    })
+
+    if (didClear === true) {
+      await this._refreshRepository(repository)
+      return true
+    }
+
+    return false
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _createBranchFromStash(
+    repository: Repository,
+    branchName: string,
+    stashName: string
+  ): Promise<boolean> {
+    const gitStore = this.gitStoreCache.get(repository)
+    const didCreate = await gitStore.performFailableOperation(async () => {
+      await createBranchFromStash(repository, branchName, stashName)
+      return true
+    })
+
+    if (didCreate === true) {
+      await this._refreshRepository(repository)
+      return true
+    }
+
+    return false
   }
 
   /** This shouldn't be called directly. See `Dispatcher`. */

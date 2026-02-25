@@ -1,0 +1,194 @@
+.stash-management-command-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-half);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary-color);
+
+  code {
+    font-weight: var(--font-weight-semibold);
+  }
+}
+
+.stash-management-command-item {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.stash-management-command-description {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary-color);
+  line-height: 1.35;
+}
+
+.stash-management-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-half);
+  overflow-y: auto;
+  border: var(--base-border);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-half);
+  background: var(--background-color);
+}
+
+.stash-management-row {
+  border: var(--base-border);
+  border-radius: var(--border-radius);
+  background: var(--box-background-color);
+  color: var(--text-color);
+  text-align: left;
+  padding: var(--spacing-half);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--box-selected-background-color);
+  }
+
+  &.selected {
+    background: var(--box-selected-active-background-color);
+    color: var(--box-selected-active-text-color);
+  }
+}
+
+.stash-management-row-title {
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: 2px;
+}
+
+.stash-management-row-message {
+  font-size: var(--font-size-sm);
+  word-break: break-word;
+}
+
+.stash-management-row-meta {
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary-color);
+}
+
+.stash-management-row.selected .stash-management-row-meta {
+  color: var(--box-selected-active-text-color);
+  opacity: 0.85;
+}
+
+.stash-management-placeholder {
+  color: var(--text-secondary-color);
+  font-size: var(--font-size-sm);
+}
+
+.stash-management-status {
+  padding: var(--spacing-half) var(--spacing);
+  border: var(--base-border);
+  border-radius: var(--border-radius);
+  background: var(--box-alt-background-color);
+  font-size: var(--font-size-sm);
+}
+
+#stash-management-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  gap: var(--spacing);
+  padding: var(--spacing);
+  overflow: hidden;
+
+  .stash-management-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing);
+  }
+
+  h2,
+  h3 {
+    margin: 0;
+  }
+
+  .stash-management-sections {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing);
+    overflow-y: auto;
+    padding-right: var(--spacing-half);
+  }
+
+  .stash-management-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-half);
+    border: var(--base-border);
+    border-radius: var(--border-radius);
+    padding: var(--spacing);
+    background: var(--box-background-color);
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .stash-management-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-half);
+  }
+
+  .stash-management-inline-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--spacing-half);
+    align-items: center;
+  }
+
+  .stash-management-preview {
+    flex: 1;
+    min-height: 0;
+
+    pre {
+      margin: 0;
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      border: var(--base-border);
+      border-radius: var(--border-radius);
+      background: var(--background-color);
+      padding: var(--spacing-half);
+      font-size: var(--font-size-sm);
+      white-space: pre;
+    }
+  }
+}
+
+#stash-management-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  gap: var(--spacing-half);
+  padding: var(--spacing);
+  overflow: hidden;
+
+  h3 {
+    margin: 0;
+  }
+
+  .stash-management-sidebar-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-half);
+  }
+
+  .stash-management-list {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .stash-management-sidebar-hint {
+    color: var(--text-secondary-color);
+    font-size: var(--font-size-xs);
+  }
+}
