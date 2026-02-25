@@ -45,6 +45,84 @@
   }
 
   &.filtered-changes-list {
+    .changes-split-container {
+      display: grid;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .changes-split-pane {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .changes-split-pane-header {
+      @include ellipsis;
+      display: block;
+      height: 29px;
+      line-height: 29px;
+      padding: 0 var(--spacing);
+      color: var(--text-secondary-color);
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: var(--box-alt-background-color);
+      border-bottom: 1px solid var(--box-border-color);
+    }
+
+    .changes-split-pane-list {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+
+      .filter-list {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+      }
+    }
+
+    .changes-splitter {
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      cursor: row-resize;
+      background: var(--box-alt-background-color);
+      border-top: 1px solid var(--box-border-color);
+      border-bottom: 1px solid var(--box-border-color);
+      position: relative;
+
+      &::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 48px;
+        height: 2px;
+        transform: translate(-50%, -50%);
+        border-radius: 999px;
+        background: var(--text-secondary-color);
+        opacity: 0.5;
+      }
+
+      &:hover,
+      &:focus {
+        background: var(--secondary-button-background);
+        outline: none;
+
+        &::before {
+          opacity: 0.8;
+        }
+      }
+
+      &:active {
+        background: var(--box-selected-background-color);
+      }
+    }
+
     .filter-popover {
       text-align: right;
       min-width: 200px;

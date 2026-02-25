@@ -67,7 +67,12 @@ import { TextBox } from '../lib/text-box'
 import { Button } from '../lib/button'
 import { LinkButton } from '../lib/link-button'
 import { plural } from '../lib/plural'
-import { Dialog, DialogContent, DialogFooter, DialogStackContext } from '../dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogStackContext,
+} from '../dialog'
 import { OkCancelButtonGroup } from '../dialog/ok-cancel-button-group'
 import {
   isCommittingFileHiddenByFilter,
@@ -101,6 +106,14 @@ const StashIcon: OcticonSymbolVariant = {
 }
 
 const GitIgnoreFileName = '.gitignore'
+const StagedFilesGroupIdentifier = 'staged-files'
+const UnstagedFilesGroupIdentifier = 'unstaged-files'
+const DefaultStagedPaneRatio = 0.5
+const MinimumPaneHeight = 120
+const SplitterHeight = 6
+type ChangesListGroupIdentifier =
+  | typeof StagedFilesGroupIdentifier
+  | typeof UnstagedFilesGroupIdentifier
 
 interface IFilterChangesListProps {
   readonly repository: Repository
@@ -247,9 +260,14 @@ interface IFilterChangesListProps {
 
 interface IFilterChangesListState {
   readonly filteredItems: Map<string, IChangesListItem>
+  readonly filteredStagedItems: Map<string, IChangesListItem>
+  readonly filteredUnstagedItems: Map<string, IChangesListItem>
   readonly selectedItems: ReadonlyArray<IChangesListItem>
   readonly focusedRow: string | null
-  readonly groups: ReadonlyArray<IFilterListGroup<IChangesListItem>>
+  readonly groups: ReadonlyArray<
+    IFilterListGroup<IChangesListItem, ChangesListGroupIdentifier>
+  >
+  readonly stagedPaneRatio: number
   readonly isStashDialogOpen: boolean
   readonly stashMessage: string
   readonly stashPathspecs: ReadonlyArray<string> | null
@@ -305,8 +323,11 @@ export class FilterChangesList extends React.Component<
   private headerRef = createObservableRef<HTMLDivElement>()
   private filterOptionsButtonRef: HTMLButtonElement | null = null
   private includeAllCheckBoxRef = React.createRef<Checkbox>()
-  private filterListRef =
+  private stagedFilterListRef =
     React.createRef<AugmentedSectionFilterList<IChangesListItem>>()
+  private unstagedFilterListRef =
+    React.createRef<AugmentedSectionFilterList<IChangesListItem>>()
+  private splitContainerRef = React.createRef<HTMLDivElement>()
 
   /** Compute the 'Include All' checkbox value */
   private getCheckAllValue = memoizeOne(
@@ -357,16 +378,29 @@ export class FilterChangesList extends React.Component<
   public constructor(props: IFilterChangesListProps) {
     super(props)
 
-    const listItems = this.createListItems(props.workingDirectory.files)
-    const groups = [listItems]
+    const groups = this.createListGroups(
+      props.workingDirectory.files,
+      props.rebaseConflictState
+    )
+    const stagedGroup = this.getGroup(groups, StagedFilesGroupIdentifier)
+    const unstagedGroup = this.getGroup(groups, UnstagedFilesGroupIdentifier)
+    const filteredStagedItems = this.createFilteredItemsMap(stagedGroup.items)
+    const filteredUnstagedItems = this.createFilteredItemsMap(
+      unstagedGroup.items
+    )
+    const filteredItems = this.combineFilteredItems(
+      filteredStagedItems,
+      filteredUnstagedItems
+    )
 
     this.state = {
-      filteredItems: new Map<string, IChangesListItem>(
-        listItems.items.map(i => [i.id, i])
-      ),
+      filteredItems,
+      filteredStagedItems,
+      filteredUnstagedItems,
       selectedItems: getSelectedItemsFromProps(props),
       focusedRow: null,
       groups,
+      stagedPaneRatio: DefaultStagedPaneRatio,
       isStashDialogOpen: false,
       stashMessage: '',
       stashPathspecs: null,
@@ -383,28 +417,157 @@ export class FilterChangesList extends React.Component<
       !arrayEquals(
         nextProps.workingDirectory.files,
         this.props.workingDirectory.files
-      )
+      ) ||
+      nextProps.rebaseConflictState !== this.props.rebaseConflictState
     ) {
+      const groups = this.createListGroups(
+        nextProps.workingDirectory.files,
+        nextProps.rebaseConflictState
+      )
+      const stagedGroup = this.getGroup(groups, StagedFilesGroupIdentifier)
+      const unstagedGroup = this.getGroup(groups, UnstagedFilesGroupIdentifier)
+      const filteredStagedItems = this.createFilteredItemsMap(stagedGroup.items)
+      const filteredUnstagedItems = this.createFilteredItemsMap(
+        unstagedGroup.items
+      )
+
       this.setState({
         selectedItems: getSelectedItemsFromProps(nextProps),
-        groups: [this.createListItems(nextProps.workingDirectory.files)],
+        groups,
+        filteredStagedItems,
+        filteredUnstagedItems,
+        filteredItems: this.combineFilteredItems(
+          filteredStagedItems,
+          filteredUnstagedItems
+        ),
       })
     }
   }
 
-  private createListItems(
-    files: ReadonlyArray<WorkingDirectoryFileChange>
-  ): IFilterListGroup<IChangesListItem> {
-    const items = files.map(file => ({
-      text: [file.path],
-      id: file.id,
-      change: file,
-    }))
+  public componentWillUnmount() {
+    this.unsubscribeFromSplitterDragEvents()
+  }
 
-    return {
-      identifier: 'changed-files',
-      items,
+  private createListGroups(
+    files: ReadonlyArray<WorkingDirectoryFileChange>,
+    rebaseConflictState: RebaseConflictState | null
+  ): ReadonlyArray<
+    IFilterListGroup<IChangesListItem, ChangesListGroupIdentifier>
+  > {
+    const stagedItems: Array<IChangesListItem> = []
+    const unstagedItems: Array<IChangesListItem> = []
+
+    for (const file of files) {
+      const item = {
+        text: [file.path],
+        id: file.id,
+        change: file,
+      }
+
+      if (this.getFileIncludeState(file, rebaseConflictState) === false) {
+        unstagedItems.push(item)
+      } else {
+        stagedItems.push(item)
+      }
     }
+
+    return [
+      {
+        identifier: StagedFilesGroupIdentifier,
+        items: stagedItems,
+      },
+      {
+        identifier: UnstagedFilesGroupIdentifier,
+        items: unstagedItems,
+      },
+    ]
+  }
+
+  private getGroup(
+    groups: ReadonlyArray<
+      IFilterListGroup<IChangesListItem, ChangesListGroupIdentifier>
+    >,
+    identifier: ChangesListGroupIdentifier
+  ): IFilterListGroup<IChangesListItem, ChangesListGroupIdentifier> {
+    const group = groups.find(g => g.identifier === identifier)
+
+    return (
+      group ?? {
+        identifier,
+        items: [],
+      }
+    )
+  }
+
+  private getStagedGroup() {
+    return this.getGroup(this.state.groups, StagedFilesGroupIdentifier)
+  }
+
+  private getUnstagedGroup() {
+    return this.getGroup(this.state.groups, UnstagedFilesGroupIdentifier)
+  }
+
+  private createFilteredItemsMap(items: ReadonlyArray<IChangesListItem>) {
+    const filteredSet = new Map<string, IChangesListItem>()
+    items.forEach(item => filteredSet.set(item.id, item))
+    return filteredSet
+  }
+
+  private combineFilteredItems(
+    stagedItems: Map<string, IChangesListItem>,
+    unstagedItems: Map<string, IChangesListItem>
+  ) {
+    return new Map<string, IChangesListItem>([...stagedItems, ...unstagedItems])
+  }
+
+  private isUncommittableSubmodule(file: WorkingDirectoryFileChange) {
+    const { submoduleStatus } = file.status
+    return (
+      submoduleStatus !== undefined &&
+      file.status.kind === AppFileStatusKind.Modified &&
+      !submoduleStatus.commitChanged
+    )
+  }
+
+  private isPartiallyCommittableSubmodule(file: WorkingDirectoryFileChange) {
+    const { submoduleStatus } = file.status
+
+    return (
+      submoduleStatus !== undefined &&
+      (submoduleStatus.commitChanged ||
+        file.status.kind === AppFileStatusKind.New) &&
+      (submoduleStatus.modifiedChanges || submoduleStatus.untrackedChanges)
+    )
+  }
+
+  /**
+   * Returns the include state that the checkbox should represent.
+   *
+   * `true` and `null` are grouped under "staged files", while `false` is
+   * grouped under "unstaged files".
+   */
+  private getFileIncludeState(
+    file: WorkingDirectoryFileChange,
+    rebaseConflictState: RebaseConflictState | null
+  ): boolean | null {
+    if (this.isUncommittableSubmodule(file)) {
+      return false
+    }
+
+    if (rebaseConflictState !== null) {
+      return file.status.kind !== AppFileStatusKind.Untracked
+    }
+
+    const selection = file.selection.getSelectionType()
+    if (selection === DiffSelectionType.All) {
+      return true
+    }
+
+    if (selection === DiffSelectionType.None) {
+      return false
+    }
+
+    return null
   }
 
   private onIncludeAllChanged = (event: React.FormEvent<HTMLInputElement>) => {
@@ -428,32 +591,10 @@ export class FilterChangesList extends React.Component<
     } = this.props
 
     const file = changeListItem.change
-    const selection = file.selection.getSelectionType()
-    const { submoduleStatus } = file.status
-
-    const isUncommittableSubmodule =
-      submoduleStatus !== undefined &&
-      file.status.kind === AppFileStatusKind.Modified &&
-      !submoduleStatus.commitChanged
-
+    const isUncommittableSubmodule = this.isUncommittableSubmodule(file)
     const isPartiallyCommittableSubmodule =
-      submoduleStatus !== undefined &&
-      (submoduleStatus.commitChanged ||
-        file.status.kind === AppFileStatusKind.New) &&
-      (submoduleStatus.modifiedChanges || submoduleStatus.untrackedChanges)
-
-    const includeAll =
-      selection === DiffSelectionType.All
-        ? true
-        : selection === DiffSelectionType.None
-        ? false
-        : null
-
-    const include = isUncommittableSubmodule
-      ? false
-      : rebaseConflictState !== null
-      ? file.status.kind !== AppFileStatusKind.Untracked
-      : includeAll
+      this.isPartiallyCommittableSubmodule(file)
+    const include = this.getFileIncludeState(file, rebaseConflictState)
 
     const disableSelection =
       isCommitting || rebaseConflictState !== null || isUncommittableSubmodule
@@ -577,7 +718,10 @@ export class FilterChangesList extends React.Component<
       }
     } catch (error) {
       this.setState({ isCreatingStash: false })
-      await defaultErrorHandler(this.coerceToError(error), this.props.dispatcher)
+      await defaultErrorHandler(
+        this.coerceToError(error),
+        this.props.dispatcher
+      )
     }
   }
 
@@ -825,8 +969,7 @@ export class FilterChangesList extends React.Component<
       }
     } else if (paths.length > 1) {
       const includeUntracked = selectedFiles.some(
-        selectedFile =>
-          selectedFile.status.kind === AppFileStatusKind.Untracked
+        selectedFile => selectedFile.status.kind === AppFileStatusKind.Untracked
       )
 
       items.push({
@@ -1315,12 +1458,32 @@ export class FilterChangesList extends React.Component<
     this.props.dispatcher.setChangesListFilterText(this.props.repository, text)
   }
 
-  private onFilterListResultsChanged = (
+  private onStagedFilterListResultsChanged = (
     filteredItems: ReadonlyArray<IChangesListItem>
   ) => {
-    const filteredSet = new Map<string, IChangesListItem>()
-    filteredItems.forEach(f => filteredSet.set(f.id, f))
-    this.setState({ filteredItems: filteredSet })
+    const filteredStagedItems = this.createFilteredItemsMap(filteredItems)
+
+    this.setState(previousState => ({
+      filteredStagedItems,
+      filteredItems: this.combineFilteredItems(
+        filteredStagedItems,
+        previousState.filteredUnstagedItems
+      ),
+    }))
+  }
+
+  private onUnstagedFilterListResultsChanged = (
+    filteredItems: ReadonlyArray<IChangesListItem>
+  ) => {
+    const filteredUnstagedItems = this.createFilteredItemsMap(filteredItems)
+
+    this.setState(previousState => ({
+      filteredUnstagedItems,
+      filteredItems: this.combineFilteredItems(
+        previousState.filteredStagedItems,
+        filteredUnstagedItems
+      ),
+    }))
   }
 
   private onFileSelectionChanged = (items: ReadonlyArray<IChangesListItem>) => {
@@ -1365,9 +1528,88 @@ export class FilterChangesList extends React.Component<
   }
 
   private onFilterKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (this.filterListRef.current) {
-      this.filterListRef.current.onKeyDown(event)
+    const filterList = this.getFilterListForKeyboardNavigation()
+
+    if (filterList) {
+      filterList.onKeyDown(event)
     }
+  }
+
+  private getFilterListForKeyboardNavigation() {
+    if (this.state.filteredStagedItems.size > 0) {
+      return this.stagedFilterListRef.current
+    }
+
+    if (this.state.filteredUnstagedItems.size > 0) {
+      return this.unstagedFilterListRef.current
+    }
+
+    if (this.getStagedGroup().items.length > 0) {
+      return this.stagedFilterListRef.current
+    }
+
+    if (this.getUnstagedGroup().items.length > 0) {
+      return this.unstagedFilterListRef.current
+    }
+
+    return (
+      this.stagedFilterListRef.current ?? this.unstagedFilterListRef.current
+    )
+  }
+
+  private onSplitterMouseDown = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    document.addEventListener('mousemove', this.onSplitterMouseMove)
+    document.addEventListener('mouseup', this.onSplitterMouseUp)
+
+    event.preventDefault()
+  }
+
+  private onSplitterMouseMove = (event: MouseEvent) => {
+    this.updateStagedPaneRatio(event.clientY)
+    event.preventDefault()
+  }
+
+  private onSplitterMouseUp = (event: MouseEvent) => {
+    this.unsubscribeFromSplitterDragEvents()
+    event.preventDefault()
+  }
+
+  private unsubscribeFromSplitterDragEvents() {
+    document.removeEventListener('mousemove', this.onSplitterMouseMove)
+    document.removeEventListener('mouseup', this.onSplitterMouseUp)
+  }
+
+  private updateStagedPaneRatio(clientY: number) {
+    const splitContainer = this.splitContainerRef.current
+
+    if (splitContainer === null) {
+      return
+    }
+
+    const bounds = splitContainer.getBoundingClientRect()
+    const availableHeight = bounds.height - SplitterHeight
+
+    if (availableHeight <= 0) {
+      return
+    }
+
+    if (availableHeight <= MinimumPaneHeight * 2) {
+      this.setState({ stagedPaneRatio: DefaultStagedPaneRatio })
+      return
+    }
+
+    const minRatio = MinimumPaneHeight / availableHeight
+    const maxRatio = 1 - minRatio
+    const ratio = (clientY - bounds.top) / availableHeight
+    const stagedPaneRatio = Math.max(minRatio, Math.min(maxRatio, ratio))
+
+    this.setState({ stagedPaneRatio })
+  }
+
+  private onSplitterDoubleClick = () => {
+    this.setState({ stagedPaneRatio: DefaultStagedPaneRatio })
   }
 
   private renderFilterRow = () => {
@@ -1455,20 +1697,81 @@ export class FilterChangesList extends React.Component<
     )
   }
 
-  private getListAriaLabel = () => {
-    const { files } = this.props.workingDirectory
-    return `${files.length} changed file${plural(files.length)}`
+  private getFilterMethod = () => {
+    return this.props.fileListFilter.isIncludedInCommit ||
+      this.props.fileListFilter.isNewFile ||
+      this.props.fileListFilter.isModifiedFile ||
+      this.props.fileListFilter.isDeletedFile ||
+      this.props.fileListFilter.isExcludedFromCommit
+      ? this.applyFilters
+      : undefined
   }
 
-  public render() {
-    const { workingDirectory, isCommitting } = this.props
+  private getPaneTitle(identifier: ChangesListGroupIdentifier) {
+    if (identifier === StagedFilesGroupIdentifier) {
+      return __DARWIN__ ? 'Staged Files' : 'Staged files'
+    }
+
+    return __DARWIN__ ? 'Unstaged Files' : 'Unstaged files'
+  }
+
+  private getPaneAriaLabel = (identifier: ChangesListGroupIdentifier) => {
+    const count =
+      identifier === StagedFilesGroupIdentifier
+        ? this.state.filteredStagedItems.size
+        : this.state.filteredUnstagedItems.size
+
+    if (identifier === StagedFilesGroupIdentifier) {
+      return `${count} staged file${plural(count)}`
+    }
+
+    return `${count} unstaged file${plural(count)}`
+  }
+
+  private getStagedPaneAriaLabel = (_group: number) =>
+    this.getPaneAriaLabel(StagedFilesGroupIdentifier)
+
+  private getUnstagedPaneAriaLabel = (_group: number) =>
+    this.getPaneAriaLabel(UnstagedFilesGroupIdentifier)
+
+  private getSplitContainerStyle(): React.CSSProperties {
+    const stagedRatio = this.state.stagedPaneRatio
+    const unstagedRatio = Math.max(0.01, 1 - stagedRatio)
+
+    return {
+      gridTemplateRows: `minmax(${MinimumPaneHeight}px, ${stagedRatio}fr) ${SplitterHeight}px minmax(${MinimumPaneHeight}px, ${unstagedRatio}fr)`,
+    }
+  }
+
+  private renderChangesPane = (
+    identifier: ChangesListGroupIdentifier,
+    listRef: React.RefObject<AugmentedSectionFilterList<IChangesListItem>>,
+    filteredItems: Map<string, IChangesListItem>,
+    onFilterListResultsChanged: (
+      items: ReadonlyArray<IChangesListItem>
+    ) => void,
+    setScrollTop?: number
+  ) => {
+    const group = this.getGroup(this.state.groups, identifier)
+    const title = this.getPaneTitle(identifier)
+    const id =
+      identifier === StagedFilesGroupIdentifier
+        ? 'staged-changes-list'
+        : 'unstaged-changes-list'
+    const getGroupAriaLabel =
+      identifier === StagedFilesGroupIdentifier
+        ? this.getStagedPaneAriaLabel
+        : this.getUnstagedPaneAriaLabel
 
     return (
-      <>
-        <div className="changes-list-container file-list filtered-changes-list">
+      <div className={classNames('changes-split-pane', identifier)}>
+        <div className="changes-split-pane-header">
+          {`${title} (${filteredItems.size})`}
+        </div>
+        <div className="changes-split-pane-list">
           <AugmentedSectionFilterList<IChangesListItem>
-            ref={this.filterListRef}
-            id="changes-list"
+            ref={listRef}
+            id={id}
             rowHeight={RowHeight}
             filterText={
               this.props.showChangesFilter
@@ -1476,7 +1779,7 @@ export class FilterChangesList extends React.Component<
                 : ''
             }
             filterTextBox={this.filterTextBox}
-            onFilterListResultsChanged={this.onFilterListResultsChanged}
+            onFilterListResultsChanged={onFilterListResultsChanged}
             selectedItems={this.state.selectedItems}
             selectionMode="multi"
             renderItem={this.renderChangedFile}
@@ -1485,22 +1788,14 @@ export class FilterChangesList extends React.Component<
             onItemKeyboardFocus={this.onChangedFileFocus}
             onItemBlur={this.onChangedFileBlur}
             onScroll={this.onScroll}
-            setScrollTop={this.props.changesListScrollTop}
+            setScrollTop={setScrollTop}
             onItemKeyDown={this.onItemKeyDown}
             onSelectionChanged={this.onFileSelectionChanged}
-            groups={this.state.groups}
-            filterMethod={
-              this.props.fileListFilter.isIncludedInCommit ||
-              this.props.fileListFilter.isNewFile ||
-              this.props.fileListFilter.isModifiedFile ||
-              this.props.fileListFilter.isDeletedFile ||
-              this.props.fileListFilter.isExcludedFromCommit
-                ? this.applyFilters
-                : undefined
-            }
+            groups={[group]}
+            filterMethod={this.getFilterMethod()}
             invalidationProps={{
-              workingDirectory: workingDirectory,
-              isCommitting: isCommitting,
+              workingDirectory: this.props.workingDirectory,
+              isCommitting: this.props.isCommitting,
               focusedRow: this.state.focusedRow,
               showChangesFilter: this.props.showChangesFilter,
               filterNewFiles: this.props.fileListFilter.isNewFile,
@@ -1508,15 +1803,60 @@ export class FilterChangesList extends React.Component<
               filterDeletedFiles: this.props.fileListFilter.isDeletedFile,
               filterExcludedFiles:
                 this.props.fileListFilter.isExcludedFromCommit,
+              paneIdentifier: identifier,
             }}
             onItemContextMenu={this.onItemContextMenu}
-            renderCustomFilterRow={this.renderFilterRow}
-            getGroupAriaLabel={this.getListAriaLabel}
-            renderNoItems={this.renderNoChanges}
-            postNoResultsMessage={getNoResultsMessage(
-              this.props.fileListFilter
-            )}
+            hideFilterRow={true}
+            getGroupAriaLabel={getGroupAriaLabel}
+            renderNoItems={
+              identifier === StagedFilesGroupIdentifier &&
+              this.state.filteredItems.size === 0
+                ? this.renderNoChanges
+                : undefined
+            }
+            postNoResultsMessage={
+              identifier === StagedFilesGroupIdentifier &&
+              this.state.filteredItems.size === 0
+                ? getNoResultsMessage(this.props.fileListFilter)
+                : undefined
+            }
           />
+        </div>
+      </div>
+    )
+  }
+
+  public render() {
+    return (
+      <>
+        <div className="changes-list-container file-list filtered-changes-list">
+          {this.renderFilterRow()}
+          <div
+            className="changes-split-container"
+            style={this.getSplitContainerStyle()}
+            ref={this.splitContainerRef}
+          >
+            {this.renderChangesPane(
+              StagedFilesGroupIdentifier,
+              this.stagedFilterListRef,
+              this.state.filteredStagedItems,
+              this.onStagedFilterListResultsChanged,
+              this.props.changesListScrollTop
+            )}
+            <button
+              type="button"
+              className="changes-splitter"
+              onMouseDown={this.onSplitterMouseDown}
+              onDoubleClick={this.onSplitterDoubleClick}
+              aria-label="Resize staged and unstaged file list panes"
+            />
+            {this.renderChangesPane(
+              UnstagedFilesGroupIdentifier,
+              this.unstagedFilterListRef,
+              this.state.filteredUnstagedItems,
+              this.onUnstagedFilterListResultsChanged
+            )}
+          </div>
         </div>
         {this.renderStashedChanges()}
         {this.renderHiddenChangesWarning()}
@@ -1753,8 +2093,6 @@ export class FilterChangesList extends React.Component<
       return trimmedPathspec.length > 0 ? [trimmedPathspec] : []
     }
 
-    return pathspec
-      .map(value => value.trim())
-      .filter(value => value.length > 0)
+    return pathspec.map(value => value.trim()).filter(value => value.length > 0)
   }
 }
